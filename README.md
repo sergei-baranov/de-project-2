@@ -238,3 +238,19 @@ HAVING COUNT(DISTINCT payment_amount) > 1;
 Код под комментом `'-- shipping_info'`.
 
 ---
+
+5. Создайте таблицу статусов о доставке `shipping_status` и включите туда информацию из лога `shipping` (`status` , `state`). Добавьте туда вычислимую информацию по фактическому времени доставки `shipping_start_fact_datetime`, `shipping_end_fact_datetime` . Отразите для каждого уникального `shippingid` его итоговое состояние доставки.
+
+- Данные в таблице должны отражать максимальный `status` и `state` по максимальному времени лога `state_datetime` в таблице `shipping`.
+- `shipping_start_fact_datetime` — это время `state_datetime`, когда `state` заказа перешёл в состояние `booked`.
+- `shipping_end_fact_datetime` — это время `state_datetime` , когда state заказа перешёл в состояние `recieved`.
+
+---
+
+В `migration.sql` создаётся и заполняется таблица `shipping_status`.
+
+Код под комментом `'-- shipping_status'`.
+
+Заполняем данными в три прохода (один инсерт и два апдейта), так как один инсерт с джойнами на 4 CTE-шки работает неприлично долго.
+
+---

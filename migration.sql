@@ -134,3 +134,63 @@ FROM
 GROUP BY
     shippingid
 ;
+
+-- shipping_status
+
+CREATE TABLE public.shipping_status (
+    shippingid BIGINT PRIMARY KEY,
+    status TEXT,
+    state TEXT,
+    shipping_start_fact_datetime TIMESTAMP DEFAULT NULL,
+    shipping_end_fact_datetime TIMESTAMP DEFAULT NULL
+);
+
+INSERT INTO public.shipping_status
+(shippingid, status, state)
+WITH
+cte_max_state_datetime AS (
+    SELECT shippingid, MAX(state_datetime) AS dt
+    FROM public.shipping
+    GROUP BY shippingid
+)
+SELECT
+    s.shippingid,
+    s.status,
+    s.state
+FROM
+    cte_max_state_datetime m
+    INNER JOIN public.shipping s ON (
+        s.shippingid = m.shippingid
+        AND s.state_datetime = m.dt
+    )
+;
+
+UPDATE public.shipping_status s
+SET (shipping_start_fact_datetime) =
+(
+    WITH
+    cte_min_booked AS (
+        SELECT shippingid, MIN(state_datetime) AS dt
+        FROM public.shipping
+        WHERE state = 'booked'
+        GROUP BY shippingid
+    )
+    SELECT dt
+    FROM cte_min_booked b
+    WHERE b.shippingid = s.shippingid
+);
+
+UPDATE public.shipping_status s
+SET (shipping_end_fact_datetime) =
+(
+    WITH
+    cte_min_recieved AS (
+        SELECT shippingid, MIN(state_datetime) AS dt
+        FROM public.shipping
+        WHERE state = 'recieved'
+        GROUP BY shippingid
+    )
+    SELECT dt
+    FROM cte_min_recieved r
+    WHERE r.shippingid = s.shippingid
+);
