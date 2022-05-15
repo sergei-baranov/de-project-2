@@ -255,7 +255,7 @@ HAVING COUNT(DISTINCT payment_amount) > 1;
 
 ---
 
-1. Создайте представление `shipping_datamart` на основании готовых таблиц для аналитики и включите в него:
+6. Создайте представление `shipping_datamart` на основании готовых таблиц для аналитики и включите в него:
 - `shippingid`
 - `vendorid`
 - `transfer_type` — тип доставки из таблицы `shipping_transfer`
