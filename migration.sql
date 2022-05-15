@@ -194,3 +194,39 @@ SET (shipping_end_fact_datetime) =
     FROM cte_min_recieved r
     WHERE r.shippingid = s.shippingid
 );
+
+-- view shipping_datamart
+
+CREATE OR REPLACE VIEW public.shipping_datamart AS
+SELECT
+      i."shippingid"
+    , i."vendorid"
+    , t."transfer_type"
+    , EXTRACT(
+        DAY FROM age(s.shipping_end_fact_datetime, s.shipping_start_fact_datetime)
+      ) as "full_day_at_shipping"
+    , (CASE
+        WHEN s.shipping_end_fact_datetime > i.shipping_plan_datetime THEN 1
+        ELSE 0
+      END) as "is_delay"
+    , (CASE
+        WHEN s.status = 'finished' THEN 1
+        ELSE 0
+      END) as "is_shipping_finish"
+    , (CASE
+        WHEN s.shipping_end_fact_datetime > i.shipping_plan_datetime
+          THEN EXTRACT (DAY FROM age(s.shipping_end_fact_datetime, i.shipping_plan_datetime))
+        ELSE 0
+      END) as "delay_day_at_shipping"
+    , i."payment_amount"
+    , i.payment_amount * (
+        r.shipping_country_base_rate + a.agreement_rate + t.shipping_transfer_rate
+      ) as "vat"
+    , (i.payment_amount * a.agreement_commission) as "profit"
+FROM
+    public.shipping_info i
+    INNER JOIN public.shipping_status s ON s.shippingid = i.shippingid
+    INNER JOIN public.shipping_transfer t ON t.id = i.shipping_transfer_id
+    INNER JOIN public.shipping_agreement a ON a.agreementid = i.agreementid
+    INNER JOIN public.shipping_country_rates r ON r.id = i.shipping_country_rates_id
+;
