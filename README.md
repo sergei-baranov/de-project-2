@@ -132,6 +132,27 @@ de=# SELECT COUNT(DISTINCT productid) FROM public.shipping;
 
 Поле `agreementid` сделайте первичным ключом.
 
+- Проверка на уникальность agreementid
+
+```
+WITH cte_vad AS (
+  SELECT string_to_array(vendor_agreement_description, ':') vad
+  FROM public.shipping
+)
+SELECT
+  vad[1],
+  COUNT(DISTINCT concat(vad[2], '/', vad[3], '/', vad[4])) cnt
+FROM cte_vad
+GROUP BY vad[1]
+HAVING COUNT(DISTINCT concat(vad[2], '/', vad[3], '/', vad[4])) > 1;
+
+ vad | cnt 
+-----+-----
+(0 rows)
+```
+
+Значит делаем простой `INSERT`, на каждый `agreementid` есть свой уникальный набор `agreement_number` + `agreement_rate` + `agreement_commission`
+
 ---
 
 В `migration.sql` создаётся и заполняется таблица `shipping_agreement`.
@@ -140,7 +161,7 @@ de=# SELECT COUNT(DISTINCT productid) FROM public.shipping;
 
 ---
 
-3. Создайте справочник о типах доставки `shipping_transfer` из строки `shipping_transfer_description` через разделитель `:`.
+1. Создайте справочник о типах доставки `shipping_transfer` из строки `shipping_transfer_description` через разделитель `:`.
 Названия полей: `transfer_type`, `transfer_model`.
 Тж. необходимо поле `shipping_transfer_rate`.
 
@@ -247,6 +268,32 @@ HAVING COUNT(DISTINCT payment_amount) > 1;
 
 ---
 
+- Проверим, есть ли несколько статусов `booked` на один `shippingid`, то есть нужна ли будет группировка или оконка и выбор раннего из них, для выполнения условия "перешёл в состояние"
+
+```
+SELECT shippingid, count(*) FROM public.shipping WHERE state = 'booked' GROUP BY shippingid HAVING count(*) > 1;
+
+ shippingid | count 
+------------+-------
+(0 rows)
+```
+
+Вывод: группировка не нужна, не более одной `booked`-записи на каждый `shippingid`
+
+- Проверим, есть ли несколько статусов `recieved` на один `shippingid`, то есть нужна ли будет группировка или оконка и выбор раннего из них, для выполнения условия "перешёл в состояние"
+
+```
+SELECT shippingid, count(*) FROM public.shipping WHERE state = 'recieved' GROUP BY shippingid HAVING count(*) > 1;
+
+ shippingid | count 
+------------+-------
+(0 rows)
+```
+
+Вывод: группировка не нужна, не более одной `recieved`-записи на каждый `shippingid`
+
+---
+
 В `migration.sql` создаётся и заполняется таблица `shipping_status`.
 
 Код под комментом `'-- shipping_status'`.
@@ -255,7 +302,7 @@ HAVING COUNT(DISTINCT payment_amount) > 1;
 
 ---
 
-6. Создайте представление `shipping_datamart` на основании готовых таблиц для аналитики и включите в него:
+1. Создайте представление `shipping_datamart` на основании готовых таблиц для аналитики и включите в него:
 - `shippingid`
 - `vendorid`
 - `transfer_type` — тип доставки из таблицы `shipping_transfer`

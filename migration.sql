@@ -20,35 +20,20 @@ CREATE TABLE public.shipping_agreement (
     agreement_commission DECIMAL(14,3)
 );
 
-INSERT INTO public.shipping_agreement (agreementid)
+INSERT INTO public.shipping_agreement
+(agreementid, agreement_number, agreement_rate, agreement_commission)
 WITH
 cte_vad AS (
     SELECT string_to_array(vendor_agreement_description, ':') vad
     FROM public.shipping
 )
-SELECT DISTINCT vad[1]::BIGINT FROM cte_vad
+SELECT DISTINCT
+    vad[1]::BIGINT agreementid,
+    vad[2] agreement_number,
+    vad[3]::DECIMAL(14,3) agreement_rate,
+    vad[4]::DECIMAL(14,3) agreement_commission
+FROM cte_vad
 ;
-
-UPDATE public.shipping_agreement shcr
-SET (agreement_number, agreement_rate, agreement_commission) =
-(
-    WITH
-    cte_vad AS (
-        SELECT string_to_array(vendor_agreement_description, ':') vad
-        FROM public.shipping
-    ),
-    cte_vadd AS (
-        SELECT DISTINCT
-            vad[1]::BIGINT agreementid,
-            vad[2] agreement_number,
-            vad[3]::DECIMAL(14,3) agreement_rate,
-            vad[4]::DECIMAL(14,3) agreement_commission
-        FROM cte_vad
-    )
-    SELECT agreement_number, agreement_rate, agreement_commission
-    FROM cte_vadd
-    WHERE cte_vadd.agreementid = shcr.agreementid
-);
 
 -- shipping_transfer
 
@@ -81,11 +66,11 @@ CREATE TABLE public.shipping_info (
     payment_amount            DECIMAL(14,2) NOT NULL,
     vendorid                  BIGINT NOT NULL,
     FOREIGN KEY (shipping_transfer_id)
-        REFERENCES public.shipping_transfer(id) ON UPDATE cascade,
+        REFERENCES public.shipping_transfer(id), -- NO ACTION
     FOREIGN KEY (agreementid)
-        REFERENCES public.shipping_agreement(agreementid) ON UPDATE cascade,
+        REFERENCES public.shipping_agreement(agreementid), -- NO ACTION
     FOREIGN KEY (shipping_country_rates_id)
-        REFERENCES public.shipping_country_rates(id) ON UPDATE cascade
+        REFERENCES public.shipping_country_rates(id) -- NO ACTION
 );
 
 INSERT INTO public.shipping_info
@@ -111,14 +96,14 @@ WITH cte_arrays AS (
         shipping_country_base_rate
     FROM
         public.shipping
-) SELECT
+) SELECT DISTINCT
     shippingid,
-    MAX(t.id),
-    MAX(a.agreementid),
-    MAX(r.id),
-    MAX(shipping_plan_datetime),
-    MAX(payment_amount),
-    MAX(vendorid)
+    t.id,
+    a.agreementid,
+    r.id,
+    shipping_plan_datetime,
+    payment_amount,
+    vendorid
 FROM
     cte_arrays "arr"
     INNER JOIN public.shipping_transfer "t" ON (
@@ -131,8 +116,6 @@ FROM
         r.shipping_country = arr.shipping_country
         AND r.shipping_country_base_rate = arr.shipping_country_base_rate
     )
-GROUP BY
-    shippingid
 ;
 
 -- shipping_status
@@ -146,7 +129,7 @@ CREATE TABLE public.shipping_status (
 );
 
 INSERT INTO public.shipping_status
-(shippingid, status, state)
+(shippingid, status, state, shipping_start_fact_datetime, shipping_end_fact_datetime)
 WITH
 cte_max_state_datetime AS (
     SELECT shippingid, MAX(state_datetime) AS dt
@@ -156,44 +139,61 @@ cte_max_state_datetime AS (
 SELECT
     s.shippingid,
     s.status,
-    s.state
+    s.state,
+    b.state_datetime,
+    r.state_datetime
 FROM
     cte_max_state_datetime m
     INNER JOIN public.shipping s ON (
         s.shippingid = m.shippingid
         AND s.state_datetime = m.dt
     )
+    LEFT JOIN public.shipping b ON (
+        b.shippingid = m.shippingid
+        AND b.state = 'booked'
+    )
+    LEFT JOIN public.shipping r ON (
+        r.shippingid = m.shippingid
+        AND r.state = 'recieved'
+    )
 ;
 
-UPDATE public.shipping_status s
-SET (shipping_start_fact_datetime) =
-(
-    WITH
-    cte_min_booked AS (
-        SELECT shippingid, MIN(state_datetime) AS dt
-        FROM public.shipping
-        WHERE state = 'booked'
-        GROUP BY shippingid
-    )
-    SELECT dt
-    FROM cte_min_booked b
-    WHERE b.shippingid = s.shippingid
-);
 
-UPDATE public.shipping_status s
-SET (shipping_end_fact_datetime) =
-(
-    WITH
-    cte_min_recieved AS (
-        SELECT shippingid, MIN(state_datetime) AS dt
-        FROM public.shipping
-        WHERE state = 'recieved'
-        GROUP BY shippingid
-    )
-    SELECT dt
-    FROM cte_min_recieved r
-    WHERE r.shippingid = s.shippingid
-);
+-- два апдейта ниже нужны были бы, если бы на каждый shippingid
+-- бфло несколько записей со state-ом 'booked' или 'recieved',
+-- но это не так (см. проверки в readme.md);
+-- пускай будут закомментированными, на память, что можно делать проверки
+-- и упрощать сиквел для миграции.
+
+-- UPDATE public.shipping_status s
+-- SET (shipping_start_fact_datetime) =
+-- (
+--     WITH
+--     cte_min_booked AS (
+--         SELECT shippingid, MIN(state_datetime) AS dt
+--         FROM public.shipping
+--         WHERE state = 'booked'
+--         GROUP BY shippingid
+--     )
+--     SELECT dt
+--     FROM cte_min_booked b
+--     WHERE b.shippingid = s.shippingid
+-- );
+-- 
+-- UPDATE public.shipping_status s
+-- SET (shipping_end_fact_datetime) =
+-- (
+--     WITH
+--     cte_min_recieved AS (
+--         SELECT shippingid, MIN(state_datetime) AS dt
+--         FROM public.shipping
+--         WHERE state = 'recieved'
+--         GROUP BY shippingid
+--     )
+--     SELECT dt
+--     FROM cte_min_recieved r
+--     WHERE r.shippingid = s.shippingid
+-- );
 
 -- view shipping_datamart
 
